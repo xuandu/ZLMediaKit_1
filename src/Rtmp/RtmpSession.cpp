@@ -1,9 +1,9 @@
 ﻿/*
- * Copyright (c) 2016 The ZLMediaKit project authors. All Rights Reserved.
+ * Copyright (c) 2016-present The ZLMediaKit project authors. All Rights Reserved.
  *
- * This file is part of ZLMediaKit(https://github.com/xia-chu/ZLMediaKit).
+ * This file is part of ZLMediaKit(https://github.com/ZLMediaKit/ZLMediaKit).
  *
- * Use of this source code is governed by MIT license that can be found in the
+ * Use of this source code is governed by MIT-like license that can be found in the
  * LICENSE file in the root of the source tree. All contributing project authors
  * may be found in the AUTHORS file in the root of the source tree.
  */
@@ -21,8 +21,6 @@ RtmpSession::RtmpSession(const Socket::Ptr &sock) : Session(sock) {
     GET_CONFIG(uint32_t,keep_alive_sec,Rtmp::kKeepAliveSecond);
     sock->setSendTimeOutSecond(keep_alive_sec);
 }
-
-RtmpSession::~RtmpSession() = default;
 
 void RtmpSession::onError(const SockException& err) {
     bool is_player = !_push_src_ownership;
@@ -97,6 +95,8 @@ void RtmpSession::onCmd_connect(AMFDecoder &dec) {
     _media_info.schema = RTMP_SCHEMA;
     // 赋值rtmp app
     _media_info.app = params["app"].as_string();
+
+    _media_info.protocol = overSsl() ? "rtmps" : "rtmp";
 
     bool ok = true; //(app == APP_NAME);
     AMFValue version(AMF_OBJECT);
@@ -308,7 +308,7 @@ void RtmpSession::sendPlayResponse(const string &err, const RtmpMediaSource::Ptr
     weak_ptr<RtmpSession> weak_self = static_pointer_cast<RtmpSession>(shared_from_this());
     _ring_reader->setGetInfoCB([weak_self]() {
         Any ret;
-        ret.set(static_pointer_cast<SockInfo>(weak_self.lock()));
+        ret.set(static_pointer_cast<Session>(weak_self.lock()));
         return ret;
     });
     _ring_reader->setReadCB([weak_self](const RtmpMediaSource::RingDataType &pkt) {
@@ -591,9 +591,7 @@ void RtmpSession::onSendMedia(const RtmpPacket::Ptr &pkt) {
 }
 
 bool RtmpSession::close(MediaSource &sender) {
-    //此回调在其他线程触发
-    string err = StrPrinter << "close media: " << sender.getUrl();
-    safeShutdown(SockException(Err_shutdown, err));
+    shutdown(SockException(Err_shutdown, "close media: " + sender.getUrl()));
     return true;
 }
 

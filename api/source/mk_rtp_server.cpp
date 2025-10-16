@@ -1,9 +1,9 @@
 ﻿/*
- * Copyright (c) 2016 The ZLMediaKit project authors. All Rights Reserved.
+ * Copyright (c) 2016-present The ZLMediaKit project authors. All Rights Reserved.
  *
- * This file is part of ZLMediaKit(https://github.com/xia-chu/ZLMediaKit).
+ * This file is part of ZLMediaKit(https://github.com/ZLMediaKit/ZLMediaKit).
  *
- * Use of this source code is governed by MIT license that can be found in the
+ * Use of this source code is governed by MIT-like license that can be found in the
  * LICENSE file in the root of the source tree. All contributing project authors
  * may be found in the AUTHORS file in the root of the source tree.
  */
@@ -18,7 +18,22 @@ using namespace mediakit;
 
 API_EXPORT mk_rtp_server API_CALL mk_rtp_server_create(uint16_t port, int tcp_mode, const char *stream_id) {
     RtpServer::Ptr *server = new RtpServer::Ptr(new RtpServer);
-    (*server)->start(port, stream_id, (RtpServer::TcpMode)tcp_mode);
+    GET_CONFIG(std::string, local_ip, General::kListenIP)
+    (*server)->start(port, local_ip.c_str(), MediaTuple { DEFAULT_VHOST, kRtpAppName, stream_id, "" }, (RtpServer::TcpMode)tcp_mode);
+    return (mk_rtp_server)server;
+}
+
+API_EXPORT mk_rtp_server API_CALL mk_rtp_server_create2(uint16_t port, int tcp_mode, const char *vhost, const char *app, const char *stream_id) {
+    RtpServer::Ptr *server = new RtpServer::Ptr(new RtpServer);
+    GET_CONFIG(std::string, local_ip, General::kListenIP)
+    (*server)->start(port, local_ip.c_str(), MediaTuple { vhost, app, stream_id, "" }, (RtpServer::TcpMode)tcp_mode);
+    return (mk_rtp_server)server;
+}
+
+API_EXPORT mk_rtp_server API_CALL mk_rtp_server_create3(uint16_t port, int tcp_mode, const char *vhost, const char *app, const char *stream_id, int multiplex) {
+    RtpServer::Ptr *server = new RtpServer::Ptr(new RtpServer);
+    GET_CONFIG(std::string, local_ip, General::kListenIP)
+    (*server)->start(port, local_ip.c_str(), MediaTuple { vhost, app, stream_id, "" }, (RtpServer::TcpMode)tcp_mode,multiplex);
     return (mk_rtp_server)server;
 }
 
@@ -56,7 +71,7 @@ API_EXPORT void API_CALL mk_rtp_server_set_on_detach2(mk_rtp_server ctx, on_mk_r
     RtpServer::Ptr *server = (RtpServer::Ptr *) ctx;
     if (cb) {
         std::shared_ptr<void> ptr(user_data, user_data_free ? user_data_free : [](void *) {});
-        (*server)->setOnDetach([cb, ptr]() {
+        (*server)->setOnDetach([cb, ptr](const SockException &ex) {
             cb(ptr.get());
         });
     } else {
@@ -64,9 +79,49 @@ API_EXPORT void API_CALL mk_rtp_server_set_on_detach2(mk_rtp_server ctx, on_mk_r
     }
 }
 
+API_EXPORT void API_CALL mk_rtp_server_update_ssrc(mk_rtp_server ctx, uint32_t ssrc) {
+    assert(ctx);
+    RtpServer::Ptr *server = (RtpServer::Ptr *)ctx;
+    (*server)->updateSSRC(ssrc);
+}
+
+
+API_EXPORT void API_CALL mk_rtp_get_info(const char *app, const char *stream, on_mk_rtp_get_info cb) {
+    assert(cb);
+    auto src = MediaSource::find(DEFAULT_VHOST, app, stream);
+    auto process = src ? src->getRtpProcess() : nullptr;
+    if (!process) {
+        cb(0, nullptr, 0, nullptr, 0, nullptr);
+        return;
+    }
+    SockInfo *info = process.get();
+    cb(1, info->get_local_ip().c_str(), info->get_peer_port(), info->get_local_ip().c_str(), info->get_local_port(), info->getIdentifier().c_str());
+}
+
+API_EXPORT void API_CALL mk_rtp_pause_check(const char *app, const char *stream) {
+    auto src = MediaSource::find(DEFAULT_VHOST, app, stream);
+    auto process = src ? src->getRtpProcess() : nullptr;
+    if (process) {
+        process->pauseRtpTimeout(true);
+    }
+}
+
+API_EXPORT void API_CALL mk_rtp_resume_check(const char *app, const char *stream) {
+    auto src = MediaSource::find(DEFAULT_VHOST, app, stream);
+    auto process = src ? src->getRtpProcess() : nullptr;
+    if (process) {
+        process->pauseRtpTimeout(false);
+    }
+}
+
 #else
 
 API_EXPORT mk_rtp_server API_CALL mk_rtp_server_create(uint16_t port, int enable_tcp, const char *stream_id) {
+    WarnL << "请打开ENABLE_RTPPROXY后再编译";
+    return nullptr;
+}
+
+API_EXPORT mk_rtp_server API_CALL mk_rtp_server_create2(uint16_t port, int tcp_mode, const char *vhost, const char *app, const char *stream_id) {
     WarnL << "请打开ENABLE_RTPPROXY后再编译";
     return nullptr;
 }
